@@ -28,7 +28,6 @@
 #include <libopencm3/stm32/st_usbfs.h>
 
 #define APP_ADDRESS	USER_CODE_FLASH
-#define MAX_ADDRESS	FLASH_END
 
 /* We need a special large control buffer for this device: */
 uint8_t usbd_control_buffer[1024];
@@ -98,7 +97,7 @@ const struct usb_config_descriptor config = {
 	.bNumInterfaces = 1,
 	.bConfigurationValue = 1,
 	.iConfiguration = 0,
-	.bmAttributes = 0xC0,
+	.bmAttributes = 0x80,
 	.bMaxPower = 0x32,
 
 	.interface = ifaces,
