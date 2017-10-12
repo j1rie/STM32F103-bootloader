@@ -61,7 +61,7 @@ const struct usb_device_descriptor dev = {
 const struct usb_dfu_descriptor dfu_function = {
 	.bLength = sizeof(struct usb_dfu_descriptor),
 	.bDescriptorType = DFU_FUNCTIONAL,
-	.bmAttributes = USB_DFU_CAN_DOWNLOAD | USB_DFU_WILL_DETACH,
+	.bmAttributes = USB_DFU_CAN_DOWNLOAD | USB_DFU_CAN_UPLOAD | USB_DFU_WILL_DETACH,
 	.wDetachTimeout = 255,
 	.wTransferSize = 1024,
 	.bcdDFUVersion = 0x0110,
@@ -79,7 +79,7 @@ const struct usb_interface_descriptor iface = {
 
 	/* The ST Microelectronics DfuSe application needs this string.
 	 * The format isn't documented... */
-	.iInterface = 4,
+	.iInterface = 3,
 
 	.extra = &dfu_function,
 	.extralen = sizeof(dfu_function),
@@ -107,8 +107,6 @@ static const char *usb_strings[] = {
 	"IRMP STM32 project",
 	"STM32 Bootloader",
 	"BL 01",
-	/* This string is used by ST Microelectronics' DfuSe utility. */
-	//"@Internal Flash   /0x08000000/8*001Ka,56*001Kg",
 };
 
 static uint8_t usbdfu_getstatus(uint32_t *bwPollTimeout)
@@ -150,8 +148,6 @@ static void usbdfu_getstatus_complete(usbd_device *device,
 		 * skipping dfuDNLOAD-SYNC
 		 */
 		usbdfu_state = STATE_DFU_DNLOAD_IDLE;
-		return;
-	case STATE_DFU_MANIFEST_WAIT_RESET:
 		return;
 	default:
 		return;
@@ -195,8 +191,21 @@ static int usbdfu_control_request(usbd_device *device,
 		usbdfu_state = STATE_DFU_IDLE;
 		return 1;
 	case DFU_UPLOAD:
-		/* Upload not supported for now */
-		return 0;
+		if ((usbdfu_state == STATE_DFU_IDLE) ||
+			(usbdfu_state == STATE_DFU_UPLOAD_IDLE)) {
+			usbdfu_state = STATE_DFU_UPLOAD_IDLE;
+			uint32_t baseaddr = prog.addr + req->wValue * dfu_function.wTransferSize;
+			uint32_t copy_size = 0x8020000 - baseaddr;
+			if (copy_size >= dfu_function.wTransferSize) {
+				memcpy(*buf, (void*)baseaddr, dfu_function.wTransferSize);
+			} else {
+				memcpy(*buf, (void*)baseaddr, copy_size);
+				*len = copy_size;
+				usbdfu_state = STATE_APP_DETACH;
+			}
+		}
+		return 1;
+
 	case DFU_GETSTATUS: {
 		uint32_t bwPollTimeout = 0; /* 24-bit integer in DFU class spec */
 
@@ -222,12 +231,16 @@ static int usbdfu_control_request(usbd_device *device,
 	return 0;
 }
 
-static bool dfuUploadStarted(void) {
-	return (usbdfu_state == STATE_DFU_DNBUSY) ? 1 : 0;
+static bool dfuDnloadStarted(void) {
+	return (usbdfu_state == STATE_DFU_DNBUSY || usbdfu_state == STATE_DFU_UPLOAD_IDLE) ? 1 : 0;
+}
+
+static bool dfuDnloadDone(void) {
+	return (usbdfu_state == STATE_DFU_MANIFEST_WAIT_RESET) ? 1 : 0;
 }
 
 static bool dfuUploadDone(void) {
-	return (usbdfu_state == STATE_DFU_MANIFEST_WAIT_RESET) ? 1 : 0;
+	return (usbdfu_state == STATE_APP_DETACH) ? 1 : 0;
 }
 
 static bool checkUserCode(uint32_t usrAddr) {
@@ -317,13 +330,16 @@ int main(void)
 			usbd_poll(usbd_dev);
 			if(i==200000)
 				gpio_clear(LED_BANK, LED);
-			if(dfuUploadStarted()) {
+			if(dfuDnloadStarted()) {
 				gpio_clear(LED_BANK, LED);
-				while(!dfuUploadDone()) {
+				while(!dfuDnloadDone() && !dfuUploadDone()) {
 					usbd_poll(usbd_dev);
 				}
-				/* poll a little more to allow the last status request */
-				for (int k=0; k<30; k++) { usbd_poll(usbd_dev); }
+				/* poll a little more to allow the last status request, TODO: improve this */
+				if (dfuDnloadDone())
+					for (int k=0; k<30; k++) { usbd_poll(usbd_dev); }
+				else
+					for (int k=0; k<500; k++) { usbd_poll(usbd_dev); }
 				break;
 			}
 		}
