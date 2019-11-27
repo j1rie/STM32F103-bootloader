@@ -28,6 +28,7 @@
 #include <libopencm3/stm32/st_usbfs.h>
 
 #define APP_ADDRESS	USER_CODE_FLASH
+#define MAX_ADDRESS	0x8020000
 
 /* We need a special large control buffer for this device: */
 uint8_t usbd_control_buffer[1024];
@@ -195,7 +196,7 @@ static int usbdfu_control_request(usbd_device *device,
 			(usbdfu_state == STATE_DFU_UPLOAD_IDLE)) {
 			usbdfu_state = STATE_DFU_UPLOAD_IDLE;
 			uint32_t baseaddr = prog.addr + req->wValue * dfu_function.wTransferSize;
-			uint32_t copy_size = 0x8020000 - baseaddr;
+			uint32_t copy_size = MAX_ADDRESS - baseaddr;
 			if (copy_size >= dfu_function.wTransferSize) {
 				memcpy(*buf, (void*)baseaddr, dfu_function.wTransferSize);
 			} else {
@@ -205,7 +206,6 @@ static int usbdfu_control_request(usbd_device *device,
 			}
 		}
 		return 1;
-
 	case DFU_GETSTATUS: {
 		uint32_t bwPollTimeout = 0; /* 24-bit integer in DFU class spec */
 
