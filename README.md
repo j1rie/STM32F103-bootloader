@@ -1,7 +1,7 @@
 # README
 
 A bootloader for the STM32F103C8.  
-Based on the usb_dfu for Lisa-M-1 in opencm3-examples.  
+Based on the usb_dfu for Lisa-M-1 in opencm3-examples [1].  
 Needs libopencm3.  
 
 The bootloader waits for download to happen, than it starts the application.  
