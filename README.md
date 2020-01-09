@@ -6,7 +6,7 @@ Needs libopencm3.
 
 The bootloader waits for download to happen, than it starts the application.  
 For download use dfu-util with the wait option [2].  
-See also 
+See also  
 https://github.com/j1rie/IRMP_STM32#flashing-the-bootloader-with-a-st-link  
 https://github.com/j1rie/IRMP_STM32#flashing-the-firmware  
 
