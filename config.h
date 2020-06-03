@@ -88,6 +88,14 @@
 # define NO_USB_DISC
 # define NoButton
 
+#elif defined Blue_noHW
+
+# define LED_BANK GPIOA
+# define LED_RCC_GPIO RCC_GPIOA
+# define LED      GPIO9
+# define NO_USB_DISC_HW
+# define NoButton
+
 #elif defined Dev
 
 # define LED_BANK GPIOB
@@ -102,6 +110,14 @@
 # define LED_RCC_GPIO RCC_GPIOA
 # define LED      GPIO9
 # define NO_USB_DISC
+# define NoButton
+
+#elif defined Red_noHW
+
+# define LED_BANK GPIOA
+# define LED_RCC_GPIO RCC_GPIOA
+# define LED      GPIO9
+# define NO_USB_DISC_HW
 # define NoButton
 
 #elif defined blueDev

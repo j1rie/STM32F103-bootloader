@@ -27,8 +27,14 @@ include target.mk
 ifeq ($(Platform), Blue)
 DEFS += -DBlue
 endif
+ifeq ($(Platform), Blue_noHW)
+DEFS += -DBlue_noHW
+endif
 ifeq ($(Platform), Red)
 DEFS += -DRed
+endif
+ifeq ($(Platform), Red_noHW)
+DEFS += -DRed_noHW
 endif
 ifeq ($(Platform), Dev)
 DEFS += -DDev
