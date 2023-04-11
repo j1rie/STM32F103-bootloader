@@ -23,6 +23,8 @@
 #include <libopencm3/cm3/scb.h>
 #include <libopencm3/usb/usbd.h>
 #include <libopencm3/usb/dfu.h>
+#include <libopencm3/usb/dwc/otg_fs.h>
+#include <libopencm3/usb/dwc/otg_common.h>
 #include "config.h"
 #include <libopencm3/stm32/tools.h>
 #include <libopencm3/stm32/st_usbfs.h>
@@ -77,9 +79,6 @@ const struct usb_interface_descriptor iface = {
 	.bInterfaceClass = 0xFE, /* Device Firmware Upgrade */
 	.bInterfaceSubClass = 1,
 	.bInterfaceProtocol = 2,
-
-	/* The ST Microelectronics DfuSe application needs this string.
-	 * The format isn't documented... */
 	.iInterface = 3,
 
 	.extra = &dfu_function,
@@ -136,13 +135,11 @@ static void usbdfu_getstatus_complete(usbd_device *device,
 
 	switch (usbdfu_state) {
 	case STATE_DFU_DNBUSY: ;
-		uint32_t baseaddr = prog.addr +
-					prog.blocknum * dfu_function.wTransferSize;
+		uint32_t baseaddr = prog.addr + prog.blocknum * dfu_function.wTransferSize;
 		flash_erase_page(baseaddr);
 		gpio_set(LED_BANK, LED);
 		for (i = 0; i < prog.len; i += 2)
-			flash_program_half_word(baseaddr + i,
-						*(uint16_t*)(prog.buf+i));
+			flash_program_half_word(baseaddr + i, *(uint16_t*)(prog.buf+i));
 		gpio_clear(LED_BANK, LED);
 
 		/* We jump straight to dfuDNLOAD-IDLE,
@@ -155,7 +152,7 @@ static void usbdfu_getstatus_complete(usbd_device *device,
 	}
 }
 
-static int usbdfu_control_request(usbd_device *device,
+static enum usbd_request_return_codes usbdfu_control_request(usbd_device *device,
 				  struct usb_setup_data *req, uint8_t **buf,
 				  uint16_t *len,
 				  void (**complete)(usbd_device *device,
@@ -197,6 +194,7 @@ static int usbdfu_control_request(usbd_device *device,
 			usbdfu_state = STATE_DFU_UPLOAD_IDLE;
 			uint32_t baseaddr = prog.addr + req->wValue * dfu_function.wTransferSize;
 			uint32_t copy_size = MAX_ADDRESS - baseaddr;
+			gpio_toggle(LED_BANK, LED);
 			if (copy_size >= dfu_function.wTransferSize) {
 				memcpy(*buf, (void*)baseaddr, dfu_function.wTransferSize);
 			} else {
@@ -281,8 +279,8 @@ static void RCC_DeInit(void)
   /* Reset HSEBYP bit */
 	SET_REG(&RCC_CR, GET_REG(&RCC_CR)     & 0xFFFBFFFF);
 
-  /* Reset PLLSRC, PLLXTPRE, PLLMUL and USBPRE bits */
-	SET_REG(&RCC_CR, GET_REG(&RCC_CR)     & 0xFFFBFFFF);
+  /* Reset PLLSRC, PLLXTPRE, PLLMUL and USBPRE/OTGFSPRE bits */
+	SET_REG(&RCC_CR, GET_REG(&RCC_CR)     & 0xFF80FFFF);
 
   /* Disable all interrupts and clear pending bits  */
 	SET_REG(&RCC_CIR, 0x009F0000);
@@ -290,7 +288,7 @@ static void RCC_DeInit(void)
 
 int main(void)
 {
-	rcc_clock_setup_in_hse_8mhz_out_72mhz();
+	rcc_clock_setup_pll(&rcc_hse_configs[RCC_CLOCK_HSE8_72MHZ]);
 
 	rcc_periph_clock_enable(LED_RCC_GPIO);
 	gpio_set_mode(LED_BANK, GPIO_MODE_OUTPUT_50_MHZ,
@@ -324,22 +322,20 @@ int main(void)
   
 	int delay_count = 0;
 	
+#define DELAY 400000 // wait to be catched by upgrade program
 	while ((delay_count++ < 1) || no_user_jump) {
 		gpio_set(LED_BANK, LED);
-		for (int i=0; i<400000; i++) {
+		for (int i=0; i<DELAY; i++) {
 			usbd_poll(usbd_dev);
-			if(i==200000)
+			if(i== (DELAY/2))
 				gpio_clear(LED_BANK, LED);
 			if(dfuDnloadStarted()) {
 				gpio_clear(LED_BANK, LED);
 				while(!dfuDnloadDone() && !dfuUploadDone()) {
 					usbd_poll(usbd_dev);
 				}
-				/* poll a little more to allow the last status request, TODO: improve this */
-				if (dfuDnloadDone())
-					for (int k=0; k<30; k++) { usbd_poll(usbd_dev); }
-				else
-					for (int k=0; k<500; k++) { usbd_poll(usbd_dev); }
+				// wait for last status request
+				while((GET_REG(&OTG_FS_DIEPCTL0) & OTG_DIEPCTL0_NAKSTS) != OTG_DIEPCTL0_NAKSTS);
 				break;
 			}
 		}
